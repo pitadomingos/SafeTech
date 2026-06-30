@@ -1,0 +1,8 @@
+{
+  "name": "CARS Manager",
+  "description": "SafeTech Suite — A comprehensive multi-tenant SaaS platform for industrial safety and compliance. Features include Onboarding & Mobilization, Training & Certification, and SafeSite modules with automated workflows, GPS-integrated dashboards, and global system administration.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
