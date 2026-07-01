@@ -22,13 +22,18 @@ const poolConfig = process.env.DATABASE_URL
       password: process.env.DB_PASSWORD,
     };
 
-const pool = new pg.Pool({
-  ...poolConfig,
-  ssl: {
-    rejectUnauthorized: false
-  },
-  connectionTimeoutMillis: 5000
-});
+// Lazy pool initialization — avoids crashes if env vars are missing at import time
+let _pool: pg.Pool | null = null;
+function getPool(): pg.Pool {
+  if (!_pool) {
+    _pool = new pg.Pool({
+      ...poolConfig,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 5000,
+    });
+  }
+  return _pool;
+}
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -37,7 +42,7 @@ app.use(express.json({ limit: '10mb' }));
 // Health check endpoint
 app.get('/api/health', async (req, res) => {
   try {
-    const result = await pool.query('SELECT NOW()');
+    const result = await getPool().query('SELECT NOW()');
     res.json({
       status: 'ok',
       dbTime: result.rows[0],
@@ -94,7 +99,7 @@ app.post('/api/auth/login', async (req, res) => {
   }
 
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       'SELECT u.*, c.name as company_name, c.logo_url as company_logo, c.gps_coordinates as company_gps, c.registration_date, c.is_paid, c.selected_modules FROM public.users u LEFT JOIN public.companies c ON u.company_id = c.id WHERE u.email = $1 AND u.password = $2',
       [username, password]
     );
@@ -165,7 +170,7 @@ app.post('/api/auth/login', async (req, res) => {
 app.post('/api/register-company', async (req, res) => {
   const { name, address, gpsCoordinates, contactPerson, contactCell, contactEmail, logo, selectedModules } = req.body;
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       `INSERT INTO public.companies 
        (name, address, gps_coordinates, contact_person, contact_cell, contact_email, logo_url, app_name, tier, status, selected_modules) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $1, 'Prime', 'Active', $8) 
@@ -183,7 +188,7 @@ app.post('/api/register-company', async (req, res) => {
 app.post('/api/register-user', async (req, res) => {
   const { name, email, password, jobTitle, role, phoneNumber, department, companyId } = req.body;
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       `INSERT INTO public.users 
        (name, email, password, job_title, role, phone_number, department, company_id, status) 
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'Active') 
@@ -200,7 +205,7 @@ app.post('/api/register-user', async (req, res) => {
 // Generic proxy for other databaseService calls
 app.get('/api/companies', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM public.companies ORDER BY name');
+    const result = await getPool().query('SELECT * FROM public.companies ORDER BY name');
     res.json(result.rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -211,7 +216,7 @@ app.put('/api/companies/:id', async (req, res) => {
   const { id } = req.params;
   const { is_paid, tier, status, name, selected_modules } = req.body;
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       'UPDATE public.companies SET is_paid = COALESCE($1, is_paid), tier = COALESCE($2, tier), status = COALESCE($3, status), name = COALESCE($4, name), selected_modules = COALESCE($5, selected_modules) WHERE id = $6 RETURNING *',
       [is_paid, tier, status, name, selected_modules ? JSON.stringify(selected_modules) : null, id]
     );
@@ -223,7 +228,7 @@ app.put('/api/companies/:id', async (req, res) => {
 
 app.get('/api/users', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM public.users ORDER BY name');
+    const result = await getPool().query('SELECT * FROM public.users ORDER BY name');
     res.json(result.rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -232,7 +237,7 @@ app.get('/api/users', async (req, res) => {
 
 app.get('/api/employees', async (req, res) => {
     try {
-      const result = await pool.query('SELECT * FROM public.employees ORDER BY name');
+      const result = await getPool().query('SELECT * FROM public.employees ORDER BY name');
       res.json(result.rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -241,7 +246,7 @@ app.get('/api/employees', async (req, res) => {
 
 app.get('/api/sessions', async (req, res) => {
     try {
-      const result = await pool.query('SELECT * FROM public.training_sessions ORDER BY date DESC');
+      const result = await getPool().query('SELECT * FROM public.training_sessions ORDER BY date DESC');
       res.json(result.rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -250,7 +255,7 @@ app.get('/api/sessions', async (req, res) => {
 
 app.get('/api/bookings', async (req, res) => {
     try {
-      const result = await pool.query(`
+      const result = await getPool().query(`
         SELECT r.*, e.record_id as employee_record_id, e.name as employee_name, e.company as employee_company
         FROM public.records r
         LEFT JOIN public.employees e ON r.employee_id = e.id
@@ -274,7 +279,7 @@ app.get('/api/bookings', async (req, res) => {
 
 app.get('/api/sites', async (req, res) => {
     try {
-      const result = await pool.query('SELECT * FROM public.sites ORDER BY name');
+      const result = await getPool().query('SELECT * FROM public.sites ORDER BY name');
       res.json(result.rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -283,7 +288,7 @@ app.get('/api/sites', async (req, res) => {
 
 app.get('/api/waitlist', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM public.waiting_list ORDER BY created_at DESC');
+        const result = await getPool().query('SELECT * FROM public.waiting_list ORDER BY created_at DESC');
         res.json(result.rows);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -292,7 +297,7 @@ app.get('/api/waitlist', async (req, res) => {
 
 app.get('/api/requirements', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM public.employee_requirements');
+        const result = await getPool().query('SELECT * FROM public.employee_requirements');
         res.json(result.rows);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -301,7 +306,7 @@ app.get('/api/requirements', async (req, res) => {
 
 app.get('/api/rooms', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM public.rooms ORDER BY name');
+        const result = await getPool().query('SELECT * FROM public.rooms ORDER BY name');
         res.json(result.rows);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -310,7 +315,7 @@ app.get('/api/rooms', async (req, res) => {
 
 app.get('/api/trainers', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM public.trainers ORDER BY name');
+        const result = await getPool().query('SELECT * FROM public.trainers ORDER BY name');
         res.json(result.rows);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -319,7 +324,7 @@ app.get('/api/trainers', async (req, res) => {
 
 app.get('/api/connectors', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM public.data_connectors');
+        const result = await getPool().query('SELECT * FROM public.data_connectors');
         res.json(result.rows);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -328,7 +333,7 @@ app.get('/api/connectors', async (req, res) => {
 
 app.get('/api/recruitment-processes', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM public.recruitment_processes ORDER BY created_at DESC');
+        const result = await getPool().query('SELECT * FROM public.recruitment_processes ORDER BY created_at DESC');
         res.json(result.rows);
     } catch (err: any) {
         res.status(500).json({ error: err.message });
@@ -337,7 +342,7 @@ app.get('/api/recruitment-processes', async (req, res) => {
 
 app.get('/api/logs', async (req, res) => {
     try {
-      const result = await pool.query('SELECT * FROM public.system_logs ORDER BY timestamp DESC LIMIT 100');
+      const result = await getPool().query('SELECT * FROM public.system_logs ORDER BY timestamp DESC LIMIT 100');
       res.json(result.rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -347,7 +352,7 @@ app.get('/api/logs', async (req, res) => {
 app.post('/api/logs', async (req, res) => {
     const { level, message_key, user_name, metadata } = req.body;
     try {
-      await pool.query(
+      await getPool().query(
         'INSERT INTO public.system_logs (level, message_key, user_name, metadata) VALUES ($1, $2, $3, $4)',
         [level || 'INFO', message_key, user_name, metadata || {}]
       );
@@ -360,7 +365,7 @@ app.post('/api/logs', async (req, res) => {
 // SafeMap Module Endpoints
 app.get('/api/unsafe-conditions', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM public.unsafe_conditions ORDER BY created_at DESC');
+    const result = await getPool().query('SELECT * FROM public.unsafe_conditions ORDER BY created_at DESC');
     res.json(result.rows);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -370,7 +375,7 @@ app.get('/api/unsafe-conditions', async (req, res) => {
 app.post('/api/unsafe-conditions', async (req, res) => {
   const body = req.body;
   try {
-    const result = await pool.query(
+    const result = await getPool().query(
       `INSERT INTO public.unsafe_conditions (
         id, latitude, longitude, function_location, condition_type, responsible_area, 
         description, action_plan, initial_photos, correction_photos, observer_id, 
@@ -406,7 +411,7 @@ app.post('/api/unsafe-conditions', async (req, res) => {
 
 app.delete('/api/unsafe-conditions/:id', async (req, res) => {
   try {
-    await pool.query('DELETE FROM public.unsafe_conditions WHERE id = $1', [req.params.id]);
+    await getPool().query('DELETE FROM public.unsafe_conditions WHERE id = $1', [req.params.id]);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -418,29 +423,19 @@ app.all('/api/*', (req, res) => {
     res.status(404).json({ error: `Route ${req.method} ${req.url} not found` });
 });
 
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+// Dev-only server startup — fully isolated from production bundle
+if (process.env.NODE_ENV !== "production") {
+  (async () => {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
+    app.listen(PORT, '0.0.0.0', () => {
+      console.log(`Server running at http://localhost:${PORT}`);
     });
-  }
-
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running at http://localhost:${PORT}`);
-  });
-}
-
-if (process.env.NODE_ENV !== "production") {
-  startServer();
+  })();
 }
 
 export default app;
