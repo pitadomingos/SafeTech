@@ -26,7 +26,8 @@ const pool = new pg.Pool({
   ...poolConfig,
   ssl: {
     rejectUnauthorized: false
-  }
+  },
+  connectionTimeoutMillis: 5000
 });
 
 app.use(express.json({ limit: '10mb' }));
