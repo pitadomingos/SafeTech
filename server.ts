@@ -33,6 +33,44 @@ app.use(express.json({ limit: '10mb' }));
 
 // --- API ROUTES ---
 
+// Health check endpoint
+app.get('/api/health', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT NOW()');
+    res.json({
+      status: 'ok',
+      dbTime: result.rows[0],
+      env: {
+        DB_HOST: process.env.DB_HOST ? 'Present' : 'Missing',
+        DB_PORT: process.env.DB_PORT ? 'Present' : 'Missing',
+        DB_NAME: process.env.DB_NAME ? 'Present' : 'Missing',
+        DB_USER: process.env.DB_USER ? 'Present' : 'Missing',
+        DB_PASSWORD: process.env.DB_PASSWORD ? 'Present' : 'Missing',
+        DATABASE_URL: process.env.DATABASE_URL ? 'Present' : 'Missing',
+        NODE_ENV: process.env.NODE_ENV
+      },
+      url: req.url,
+      originalUrl: req.originalUrl
+    });
+  } catch (err: any) {
+    res.status(500).json({
+      status: 'error',
+      message: err.message,
+      env: {
+        DB_HOST: process.env.DB_HOST ? 'Present' : 'Missing',
+        DB_PORT: process.env.DB_PORT ? 'Present' : 'Missing',
+        DB_NAME: process.env.DB_NAME ? 'Present' : 'Missing',
+        DB_USER: process.env.DB_USER ? 'Present' : 'Missing',
+        DB_PASSWORD: process.env.DB_PASSWORD ? 'Present' : 'Missing',
+        DATABASE_URL: process.env.DATABASE_URL ? 'Present' : 'Missing',
+        NODE_ENV: process.env.NODE_ENV
+      },
+      url: req.url,
+      originalUrl: req.originalUrl
+    });
+  }
+});
+
 // Auth endpoint
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
